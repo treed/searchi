@@ -90,7 +90,7 @@ sub remap_file {
 }
 
 sub search {
-    my ($heap, $term, $client) = @_[HEAP, ARG0, ARG1];
+    my ($kernel, $heap, $term, $client, $clientsession) = @_[KERNEL, HEAP, ARG0, ARG1, ARG2];
     my $index = $heap->{index};
 
     say "looking for $term";
@@ -108,6 +108,9 @@ sub search {
         }
         seek $fh, 0, 0;
     }
+
+    $kernel->post($clientsession, 'done');
+
     my $duration = gettimeofday - $start;
     say "Took $duration seconds";
 }
@@ -128,12 +131,29 @@ sub server_error {
 }
 
 sub client_input {
-    my ($kernel, $heap, $input) = @_[KERNEL, HEAP, ARG0];
-    $kernel->post($searcher, 'search', $input, $heap->{client});
+    my ($kernel, $session, $heap, $input) = @_[KERNEL, SESSION, HEAP, ARG0];
+    my ($command, $args) = split ' ', $input, 2;
+    say "got input $input";
+    given ($command) {
+        when ('search') {
+            $kernel->post($searcher, 'search', $args, $heap->{client}, $session);
+        }
+        default {
+            say "Unknown command: $command";
+        }
+    }
 }
 
 sub client_error {
+    my ($heap, $operation, $errnum, $errstr, $id) = @_[HEAP, ARG0..ARG3];
+    unless ($operation eq "read" and $errnum == 0) {
+        delete $heap->{client};
+    }
+}
+
+sub client_done {
     my ($heap) = $_[HEAP];
+    $heap->{client}->shutdown_output;
     delete $heap->{client};
 }
 
@@ -153,6 +173,7 @@ sub new_client {
             _start           => \&client_start,
             got_client_input => \&client_input,
             got_client_error => \&client_error,
+            done             => \&client_done,
         },
         args => [$client_socket],
     );

@@ -1,0 +1,15 @@
+#!/usr/bin/perl
+use Modern::Perl;
+use autodie;
+use Socket;
+use IO::Socket::UNIX;
+
+my $search_term = $ARGV[0];
+my $socket = IO::Socket::UNIX->new(Peer => '/tmp/searchi', Type => SOCK_STREAM, Timeout => 3);
+
+$socket->print("search $search_term\n");
+$socket->shutdown(1);
+
+while (my $result = <$socket>) {
+    print $result;
+}
